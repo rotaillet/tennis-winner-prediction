@@ -24,7 +24,6 @@ from train import test_model
 
 WINDOW_SIZE = 20            # Taille de la fentre glissante pour l'historique
 HIST_FEATURE_DIM = 19       # Nombre de features historiques utilises
-# 46 features statiques de base, 6 pour la forme, 4 pour le timing, 5 pour la surface, 2 pour head-to-head
 STATIC_FEATURE_DIM = 75    
 D_MODEL = 256               # Dimension pour la fusion et le Transformer temporel
 GAT_HIDDEN_DIM = 128         # Dimension cache pour le GAT
