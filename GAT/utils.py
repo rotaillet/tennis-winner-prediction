@@ -62,7 +62,8 @@ def extract_history_features(row, player):
             row["prev_TOTAL_RETURN_POINTS_WON_p1_pct"],
             row["prev_TOTAL_POINTS_WON_p1_pct"],
             row["prev_total_games_p1"],
-            row["prev_set_win_p1"]
+            row["prev_set_win_p1"],
+            row["prev_set_win_p1"]-row["prev_set_win_p2"]
         ], dtype=np.float32)
     else:
         return np.array([
@@ -84,7 +85,8 @@ def extract_history_features(row, player):
             row["prev_TOTAL_RETURN_POINTS_WON_p2_pct"],
             row["prev_TOTAL_POINTS_WON_p2_pct"],
             row["prev_total_games_p2"],
-            row["prev_set_win_p2"]
+            row["prev_set_win_p2"],
+            row["prev_set_win_p2"]-row["prev_set_win_p1"]
         ], dtype=np.float32)
 
 def build_player_history(df):
@@ -106,7 +108,7 @@ def build_player_history(df):
 
 def get_player_history(history, player, current_date, window_size,hist_feature_dim):
     matches = history.get(player, [])
-    past_feats = [feat for (date, feat, win) in matches if date < current_date]
+    past_feats = [feat for (date, feat, win) in matches if date <= current_date]
     past_feats = past_feats[-window_size:]
     if len(past_feats) < window_size:
         pad = [np.zeros(hist_feature_dim, dtype=np.float32) for _ in range(window_size - len(past_feats))]
@@ -318,7 +320,9 @@ def compute_player_differences(row):
     rank_ratio = row["Rank_Joueur_1"] / row["Rank_Joueur_2"] if row["Rank_Joueur_2"] != 0 else 0.0
     age_ratio = row["Age_Joueur_1"] / row["Age_Joueur_2"] if row["Age_Joueur_2"] != 0 else 0.0
     points_ratio = row["Points_Joueur_1"] / row["Points_Joueur_2"] if row["Points_Joueur_2"] != 0 else 0.0
-    return np.array([rank_diff, age_diff, points_diff, rank_ratio, age_ratio, points_ratio], dtype=np.float32)
+    set_win_diff = row["prev_set_win_p2"]-row["prev_set_win_p1"]
+
+    return np.array([rank_diff, age_diff, points_diff, rank_ratio, age_ratio, points_ratio,set_win_diff], dtype=np.float32)
 
 import math
 import numpy as np

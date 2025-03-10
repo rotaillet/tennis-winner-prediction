@@ -22,18 +22,15 @@ from train import test_model
 
 
 
-WINDOW_SIZE = 20            # Taille de la fentre glissante pour l'historique
-HIST_FEATURE_DIM = 19       # Nombre de features historiques utilises
-STATIC_FEATURE_DIM = 75    
-D_MODEL = 256               # Dimension pour la fusion et le Transformer temporel
-GAT_HIDDEN_DIM = 128         # Dimension cache pour le GAT
-GAT_OUTPUT_DIM = 128        # Dimension de sortie du GAT
-NUM_HEADS_DIM = 2
-DROPOUT = 0.3
+WINDOW_SIZE = 30            # Taille de la fentre glissante pour l'historique
+HIST_FEATURE_DIM = 20       # Nombre de features historiques utilises
+STATIC_FEATURE_DIM = 86    
+NUM_HEADS_DIM = 4
+
 
 
 df = pd.read_csv("data/test2.csv", parse_dates=["Date"])
-df = df[50000:]
+df = df[60000:]
 df[["Tournoi_propre", "Prize_money"]] = df["Tournoi"].apply(lambda x: pd.Series(extraire_prize_money(x)))
 
 # Liste des colonnes numériques à normaliser
@@ -46,18 +43,18 @@ columns_to_normalize = [
     "prev_ACES_p1", "prev_ACES_p2",
     "prev_total_games_p1", "prev_total_games_p2",
     "prev_set_win_p1", "prev_set_win_p2",
-    "prev_1st_SERVE_%_p1_num", "prev_1st_SERVE_%_p1_den", "prev_1st_SERVE_%_p1_pct",
-    "prev_1st_SERVE_%_p2_num", "prev_1st_SERVE_%_p2_den", "prev_1st_SERVE_%_p2_pct",
-    "prev_1st_SERVE_POINTS_WON_p1_num", "prev_1st_SERVE_POINTS_WON_p1_den", "prev_1st_SERVE_POINTS_WON_p1_pct",
-    "prev_1st_SERVE_POINTS_WON_p2_num", "prev_1st_SERVE_POINTS_WON_p2_den", "prev_1st_SERVE_POINTS_WON_p2_pct",
-    "prev_2nd_SERVE_POINTS_WON_p1_num", "prev_2nd_SERVE_POINTS_WON_p1_den", "prev_2nd_SERVE_POINTS_WON_p1_pct",
-    "prev_2nd_SERVE_POINTS_WON_p2_num", "prev_2nd_SERVE_POINTS_WON_p2_den", "prev_2nd_SERVE_POINTS_WON_p2_pct",
-    "prev_BREAK_POINTS_WON_p1_num", "prev_BREAK_POINTS_WON_p1_den", "prev_BREAK_POINTS_WON_p1_pct",
-    "prev_BREAK_POINTS_WON_p2_num", "prev_BREAK_POINTS_WON_p2_den", "prev_BREAK_POINTS_WON_p2_pct",
-    "prev_TOTAL_RETURN_POINTS_WON_p1_num", "prev_TOTAL_RETURN_POINTS_WON_p1_den", "prev_TOTAL_RETURN_POINTS_WON_p1_pct",
-    "prev_TOTAL_RETURN_POINTS_WON_p2_num", "prev_TOTAL_RETURN_POINTS_WON_p2_den", "prev_TOTAL_RETURN_POINTS_WON_p2_pct",
-    "prev_TOTAL_POINTS_WON_p1_num", "prev_TOTAL_POINTS_WON_p1_den", "prev_TOTAL_POINTS_WON_p1_pct",
-    "prev_TOTAL_POINTS_WON_p2_num", "prev_TOTAL_POINTS_WON_p2_den", "prev_TOTAL_POINTS_WON_p2_pct","Prize_money"
+    "prev_1st_SERVE_%_p1_num",  "prev_1st_SERVE_%_p1_pct",
+    "prev_1st_SERVE_%_p2_num",  "prev_1st_SERVE_%_p2_pct",
+    "prev_1st_SERVE_POINTS_WON_p1_num",  "prev_1st_SERVE_POINTS_WON_p1_pct",
+    "prev_1st_SERVE_POINTS_WON_p2_num",  "prev_1st_SERVE_POINTS_WON_p2_pct",
+    "prev_2nd_SERVE_POINTS_WON_p1_num",  "prev_2nd_SERVE_POINTS_WON_p1_pct",
+    "prev_2nd_SERVE_POINTS_WON_p2_num",  "prev_2nd_SERVE_POINTS_WON_p2_pct",
+    "prev_BREAK_POINTS_WON_p1_num",  "prev_BREAK_POINTS_WON_p1_pct",
+    "prev_BREAK_POINTS_WON_p2_num",  "prev_BREAK_POINTS_WON_p2_pct",
+    "prev_TOTAL_RETURN_POINTS_WON_p1_num",  "prev_TOTAL_RETURN_POINTS_WON_p1_pct",
+    "prev_TOTAL_RETURN_POINTS_WON_p2_num",  "prev_TOTAL_RETURN_POINTS_WON_p2_pct",
+    "prev_TOTAL_POINTS_WON_p1_num",  "prev_TOTAL_POINTS_WON_p1_pct",
+    "prev_TOTAL_POINTS_WON_p2_num",  "prev_TOTAL_POINTS_WON_p2_pct","Prize_money"
 ]
 
 df = normalize_columns(df, columns_to_normalize)
@@ -80,13 +77,13 @@ train_df, test_df = split_last_match(df)
 train_dataset = TennisMatchDataset(train_df, history, player_to_idx, tournoi_to_idx)
 test_dataset = TennisMatchDataset(test_df, history, player_to_idx, tournoi_to_idx)
 
-train_dataloader = DataLoader(train_dataset, batch_size=64, shuffle=True)
-test_dataloader = DataLoader(test_dataset, batch_size=64, shuffle=True)
+train_dataloader = DataLoader(train_dataset, batch_size=32, shuffle=True)
+test_dataloader = DataLoader(test_dataset, batch_size=32, shuffle=True)
 
 num_players = len(player_to_idx)
 num_tournois = len(tournoi_to_idx)
 
-edge_index, edge_weight = build_player_graph_with_weights(df, player_to_idx, lambda_=0.01)
+edge_index, edge_weight = build_player_graph_with_weights(df, player_to_idx, lambda_=0.05)
 node_features = build_node_features(df, player_to_idx)
 player_feature_dim = node_features.shape[1]
 
@@ -104,7 +101,14 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 # Liste de combinaisons d'hyperparamètres à tester
 hyperparams_list = [
 
-    {"lr": 0.0001, "dropout": 0.4, "D_MODEL": 512, "GAT_HIDDEN_DIM": 128, "GAT_OUTPUT_DIM": 128, "weight_decay": 1e-4}
+    {"lr": 0.00002, "dropout": 0.4, "D_MODEL": 512, "GAT_HIDDEN_DIM": 512, "GAT_OUTPUT_DIM": 256, "weight_decay": 5e-5},
+    {"lr": 0.00002, "dropout": 0.4, "D_MODEL": 512, "GAT_HIDDEN_DIM": 512, "GAT_OUTPUT_DIM": 256, "weight_decay": 1e-5},
+    {"lr": 0.00002, "dropout": 0.4, "D_MODEL": 512, "GAT_HIDDEN_DIM": 512, "GAT_OUTPUT_DIM": 256, "weight_decay": 1e-4},
+    {"lr": 0.00002, "dropout": 0.4, "D_MODEL": 512, "GAT_HIDDEN_DIM": 256, "GAT_OUTPUT_DIM": 256, "weight_decay": 5e-5},
+    {"lr": 0.00002, "dropout": 0.4, "D_MODEL": 512, "GAT_HIDDEN_DIM": 256, "GAT_OUTPUT_DIM": 128, "weight_decay": 5e-5},
+    {"lr": 0.00002, "dropout": 0.4, "D_MODEL": 256, "GAT_HIDDEN_DIM": 256, "GAT_OUTPUT_DIM": 128, "weight_decay": 5e-5},
+
+
 ]
 
 results = []
@@ -128,18 +132,21 @@ for i, hparams in enumerate(hyperparams_list):
         num_heads=NUM_HEADS_DIM,
         dropout=hparams["dropout"]
     )
-    
+
+    total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    print(f"Nombre total de paramètres du modèle : {total_params}")
+
     model.to(device)
     criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=hparams["lr"], weight_decay=hparams["weight_decay"])
-    scheduler = StepLR(optimizer, step_size=5, gamma=0.5)
+    scheduler = StepLR(optimizer, step_size=3, gamma=0.5)
 
     max_test_acc = 0.0  
 
-    for epoch in tqdm(range(30), desc="Époques", leave=True):
+    for epoch in tqdm(range(5), desc="Époques", leave=True):
         model.train()
         running_loss = 0.0
-        for batch in tqdm(train_dataloader, desc=f"Epoch {epoch+1}/30", leave=False):
+        for batch in tqdm(train_dataloader, desc=f"Epoch {epoch+1}/5", leave=False):
             p1_history = batch["p1_history"].to(device)
             p2_history = batch["p2_history"].to(device)
             static_feat = batch["static_feat"].to(device)

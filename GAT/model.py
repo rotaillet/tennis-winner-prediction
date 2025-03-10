@@ -20,6 +20,23 @@ class PositionalEncodingBatch(nn.Module):
         # x shape: (batch, seq_len, d_model)
         x = x + self.pe[:, :x.size(1), :]
         return self.dropout(x)
+
+class TennisModelGCN(nn.Module):
+    def __init__(self, player_feature_dim, hidden_dim, output_dim, dropout=0.3):
+        super(TennisModelGCN, self).__init__()
+        self.gcn1 = GCNConv(player_feature_dim, hidden_dim)
+        self.gcn2 = GCNConv(hidden_dim, output_dim)
+        self.dropout = nn.Dropout(dropout)
+    
+    def forward(self, x, edge_index, edge_weight=None):
+        # Appliquer la première couche GCN
+        x = self.gcn1(x, edge_index, edge_weight)
+        x = F.relu(x)
+        x = self.dropout(x)
+        # Appliquer la seconde couche GCN
+        x = self.gcn2(x, edge_index, edge_weight)
+        return x
+
     
 class TennisModelGAT(nn.Module):
     def __init__(self, player_feature_dim, hidden_dim, output_dim, num_heads=4, dropout=0.3):
@@ -29,9 +46,16 @@ class TennisModelGAT(nn.Module):
     
     def forward(self, x, edge_index, edge_weight):
         edge_attr = edge_weight.unsqueeze(-1)  # (num_edges, 1)
-        x = self.gat1(x, edge_index, edge_attr=edge_attr)
+        # Supposons que x est l'entrée initiale
+        # Supposons que la sortie de self.gat1 a une dimension 1024
+        residual = x  
+        x = self.gat1(x, edge_index, edge_weight)
         x = F.elu(x)
-        x = self.gat2(x, edge_index, edge_attr=edge_attr)
+
+        
+        x = self.gat2(x, edge_index, edge_weight)
+        x = F.elu(x)
+        # Adapter residual pour qu'il ait la dimension 1024
         return x
     
 class TemporalTransformer(nn.Module):
@@ -39,7 +63,7 @@ class TemporalTransformer(nn.Module):
         super(TemporalTransformer, self).__init__()
         self.input_proj = nn.Linear(input_dim, d_model)
         self.pos_encoder = PositionalEncodingBatch(d_model, dropout)
-        encoder_layer = nn.TransformerEncoderLayer(d_model=d_model, nhead=nhead, dropout=dropout, batch_first=True,dim_feedforward=512)
+        encoder_layer = nn.TransformerEncoderLayer(d_model=d_model, nhead=nhead, dropout=dropout, batch_first=True,dim_feedforward=1024)
         self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
         self.batchnorm = nn.BatchNorm1d(d_model)
         self.dropout = nn.Dropout(dropout)
@@ -94,11 +118,15 @@ class HybridTennisModel(nn.Module):
         classifier_input_dim = 2 * gat_output_dim + 4 * d_model
         # Nouvelle dimension d'entr�e pour le classifieur : 2 * gat_output_dim + static_repr + 2 * (output cross-attention)
         self.classifier = nn.Sequential(
-        nn.Linear(classifier_input_dim, 128),
-        nn.BatchNorm1d(128),
+        nn.Linear(classifier_input_dim, 256),
+        nn.BatchNorm1d(256),
         nn.ReLU(),
         nn.Dropout(dropout),
-        nn.Linear(128, 2)
+        nn.Linear(256, 64),
+        nn.BatchNorm1d(64),
+        nn.ReLU(),
+        nn.Dropout(dropout),
+        nn.Linear(64, 2),
         )
 
     

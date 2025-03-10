@@ -4,10 +4,10 @@ import numpy as np
 import torch
 import pandas as pd
 
-WINDOW_SIZE = 20            # Taille de la fentre glissante pour l'historique
-HIST_FEATURE_DIM = 19       # Nombre de features historiques utilises
+WINDOW_SIZE = 30            # Taille de la fentre glissante pour l'historique
+HIST_FEATURE_DIM = 20       # Nombre de features historiques utilises
 # 46 features statiques de base, 6 pour la forme, 4 pour le timing, 5 pour la surface, 2 pour head-to-head
-STATIC_FEATURE_DIM = 75    
+STATIC_FEATURE_DIM = 86    
 D_MODEL = 256               # Dimension pour la fusion et le Transformer temporel
 GAT_HIDDEN_DIM = 128         # Dimension cache pour le GAT
 GAT_OUTPUT_DIM = 128        # Dimension de sortie du GAT
@@ -50,12 +50,16 @@ class TennisMatchDataset(Dataset):
         # 3. Variance (consistance) sur, par exemple, le % de premiers services
         p1_variance_first_serve = compute_variance(self.history, row["Joueur 1"], current_date, WINDOW_SIZE, feature_index=11,hist_feature_dim=HIST_FEATURE_DIM)
         p2_variance_first_serve = compute_variance(self.history, row["Joueur 2"], current_date, WINDOW_SIZE, feature_index=11,hist_feature_dim=HIST_FEATURE_DIM)
+        p1_variance_aces = compute_variance(self.history, row["Joueur 1"], current_date, WINDOW_SIZE, feature_index=3,hist_feature_dim=HIST_FEATURE_DIM)
+        p2_variance_aces = compute_variance(self.history, row["Joueur 2"], current_date, WINDOW_SIZE, feature_index=3,hist_feature_dim=HIST_FEATURE_DIM)
+        p1_variance_double_faults = compute_variance(self.history, row["Joueur 1"], current_date, WINDOW_SIZE, feature_index=4,hist_feature_dim=HIST_FEATURE_DIM)
+        p2_variance_double_faults = compute_variance(self.history, row["Joueur 2"], current_date, WINDOW_SIZE, feature_index=4,hist_feature_dim=HIST_FEATURE_DIM)
         
         # Vous pouvez regrouper ces features dans des vecteurs si nécessaire
         p1_trend_features = np.array([p1_trend_first_serve, p1_trend_aces, p1_trend_double_faults], dtype=np.float32)
         p2_trend_features = np.array([p2_trend_first_serve, p2_trend_aces, p2_trend_double_faults], dtype=np.float32)
-        p1_variance_features = np.array([p1_variance_first_serve], dtype=np.float32)
-        p2_variance_features = np.array([p2_variance_first_serve], dtype=np.float32)
+        p1_variance_features = np.array([p1_variance_first_serve,p1_variance_aces,p1_variance_double_faults], dtype=np.float32)
+        p2_variance_features = np.array([p2_variance_first_serve,p2_variance_aces,p2_variance_double_faults], dtype=np.float32)
         
         # Les autres features déjà existantes (forme, timing, etc.)
         p1_form_10 = compute_weighted_player_form(self.history, row["Joueur 1"], current_date, 10)
@@ -117,7 +121,41 @@ class TennisMatchDataset(Dataset):
         
         head2head_features = compute_head_to_head(row["Joueur 1"], row["Joueur 2"])
         diff_features = compute_player_differences(row)
-        
+        def get_player_surface_performance(player, current_date, surface):
+            """
+            Calcule pour un joueur donné et pour une surface donnée, jusqu'à current_date :
+            - nb_matchs : nombre de matchs joués,
+            - nb_victoires : nombre de matchs gagnés,
+            - win_ratio : taux de victoire (avec une valeur par défaut de 0.5 si aucun match).
+            
+            Args:
+                df (pd.DataFrame): Le DataFrame complet contenant tous les matchs.
+                player (str): Nom du joueur.
+                current_date (pd.Timestamp): Date du match courant.
+                surface (str): La surface du match (ex : "Clay", "Hard", etc.).
+                
+            Returns:
+                np.array: Un vecteur de forme (3,) de type float32 contenant [nb_matchs, nb_victoires, win_ratio].
+            """
+            # Sélectionner les matchs où le joueur a participé et qui se sont déroulés avant current_date
+            df_player = self.df[
+                (((self.df["Joueur 1"] == player) | (self.df["Joueur 2"] == player)) & 
+                (self.df["Date"] < current_date) & 
+                (self.df["Surface"] == surface))
+            ]
+            nb_matchs = len(df_player)
+            if nb_matchs == 0:
+                # Si aucune donnée n'est disponible, on renvoie par défaut 0 match, 0 victoire, win_ratio=0.5 (indécision)
+                return np.array([0, 0, 0.5], dtype=np.float32)
+            # Calculer le nombre de victoires
+            nb_victoires = df_player.apply(
+                lambda row: 1 if row["winner"] == player else 0, axis=1
+            ).sum()
+            win_ratio = nb_victoires / nb_matchs
+            return np.array([nb_matchs, nb_victoires, win_ratio], dtype=np.float32)
+
+        p1_surface_stats = get_player_surface_performance( row["Joueur 1"], current_date, row["Surface"])
+        p2_surface_stats = get_player_surface_performance(row["Joueur 2"], current_date, row["Surface"])        
         # Fusionner les features statiques
         combined_static = np.concatenate([
             static_feat,
@@ -132,7 +170,9 @@ class TennisMatchDataset(Dataset):
             p1_variance_features,
             p2_variance_features,
             last_match_features,
-            diff_features    
+            diff_features ,   
+            p1_surface_stats,
+            p2_surface_stats
 
         ])
         
@@ -147,6 +187,9 @@ class TennisMatchDataset(Dataset):
         player1_idx = self.player_to_idx[row["Joueur 1"]]
         player2_idx = self.player_to_idx[row["Joueur 2"]]
         tournoi_idx = self.tournoi_to_idx[row["Tournoi_propre"]]
+                # Récupérer la performance historique sur la surface du match pour chaque joueur
+
+
         
         return {
             "p1_history": torch.tensor(p1_history, dtype=torch.float),  # (WINDOW_SIZE, HIST_FEATURE_DIM)
