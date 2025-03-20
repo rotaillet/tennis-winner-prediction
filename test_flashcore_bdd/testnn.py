@@ -6,9 +6,8 @@ import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
 from torch.optim.lr_scheduler import StepLR
 import torch_geometric
-from scipy.cluster.hierarchy import linkage, fcluster
-from rapidfuzz import fuzz
 from tqdm import tqdm
+import torch.nn.functional as F
 
 # Importation des fonctions et classes depuis vos fichiers locaux
 from utils import (

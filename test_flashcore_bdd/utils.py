@@ -25,13 +25,19 @@ def build_mappings(df):
 
 def get_last_match_indices(df):
     last_match_idx = set()
+    # Récupérer la liste de tous les joueurs
     players = pd.concat([df["j1"], df["j2"]]).unique()
     for player in players:
+        # Filtrer les matchs du joueur
         df_player = df[(df["j1"] == player) | (df["j2"] == player)]
+        # Ne considérer que les joueurs ayant au moins 3 matchs
+        if len(df_player) < 2:
+            continue
+        # Sélectionner la date du dernier match
         last_date = df_player["date"].max()
+        # Récupérer tous les indices correspondant à ce dernier match
         idxs = df_player[df_player["date"] == last_date].index.tolist()
-        for idx in idxs:
-            last_match_idx.add(idx)
+        last_match_idx.update(idxs)
     return list(last_match_idx)
 
 def split_last_match(df):
@@ -45,19 +51,21 @@ def extract_history_features(row, player):
     if row["j1"] == player:
         return np.array([
             row["rank1"],
+            row["time"],
             row["age1"],
             row["point1"],
             row["Aces_j1"],
-            row["Doubles_fautes_j1"],
+
 
         ], dtype=np.float32)
     else:
         return np.array([
             row["rank2"],
+            row["time"],
             row["age2"],
             row["point2"],
             row["Aces_j2"],
-            row["Doubles_fautes_j2"],
+            
         ], dtype=np.float32)
 
 def build_player_history(df):
@@ -116,9 +124,9 @@ def compute_variance(history, player, current_date, window_size, feature_index,h
 
 def compute_static_features_max(row):
     cols = [
-        "Rank_Joueur_1", "Rank_Joueur_2",
-        "Age_Joueur_1", "Age_Joueur_2",
-        "Points_Joueur_1", "Points_Joueur_2"
+        "rank1", "rank2",
+        "age1", "age2",
+        "point1", "point2"
     ]
     features = np.array([row[col] for col in cols], dtype=np.float32)
     return features
@@ -145,7 +153,7 @@ def get_days_since_last_match(history, player, current_date):
         return 5000.0
     
 def build_player_graph_with_weights(df, player_to_idx, lambda_=0.001):
-    reference_date = df["Date"].max()
+    reference_date = df["date"].max()
     edge_dict = {}
     for idx, row in df.iterrows():
         p1 = player_to_idx[row["j1"]]
@@ -165,13 +173,64 @@ def build_player_graph_with_weights(df, player_to_idx, lambda_=0.001):
     edge_weight = torch.tensor(weights, dtype=torch.float)
     return edge_index, edge_weight
 
+def build_player_graph_with_weights_recent(df, player_to_idx, lambda_=0.001, recent_factor=4.0):
+    # Définir la date de référence comme la date la plus récente dans le DataFrame
+    reference_date = df["date"].max()
+    
+    # Pré-calculer pour chaque joueur les indices de ses matchs triés par date
+    # et extraire les 5 derniers matchs en excluant le dernier match (le plus récent)
+    recent_matches = {}
+    for player in player_to_idx.keys():
+        # Récupérer les indices des matchs où le joueur a participé
+        match_indices = df[((df["j1"] == player) | (df["j2"] == player))].sort_values("date").index.tolist()
+        if len(match_indices) > 1:
+            # Exclure le dernier match, puis prendre jusqu'aux 5 derniers
+            recent_matches[player] = set(match_indices[-6:-1])
+        else:
+            recent_matches[player] = set()
+    
+    edge_dict = {}
+    for idx, row in df.iterrows():
+        p1 = player_to_idx[row["j1"]]
+        p2 = player_to_idx[row["j2"]]
+        match_date = row["date"]
+        days_diff = (reference_date - match_date).days
+        weight = np.exp(-lambda_ * days_diff)
+        
+        # Initialiser un multiplicateur (1.0 par défaut)
+        multiplier = 1.0
+        # Si le match fait partie des 5 derniers pour le joueur j1, appliquer le facteur
+        if idx in recent_matches[row["j1"]]:
+            multiplier *= recent_factor
+        # Pareil pour le joueur j2
+        if idx in recent_matches[row["j2"]]:
+            multiplier *= recent_factor
+        
+        weight *= multiplier
+        
+        # Construire le graphe non orienté en ajoutant une arête dans chaque direction
+        for (src, dst) in [(p1, p2), (p2, p1)]:
+            key = (src, dst)
+            edge_dict[key] = edge_dict.get(key, 0) + weight
+
+    edges = []
+    weights = []
+    for (src, dst), w in edge_dict.items():
+        edges.append([src, dst])
+        weights.append(w)
+    edge_index = torch.tensor(edges, dtype=torch.long).t().contiguous()
+    edge_weight = torch.tensor(weights, dtype=torch.float)
+    
+    return edge_index, edge_weight
+
+
 def build_node_features(df, player_to_idx):
     num_players = len(player_to_idx)
     player_ranks = {player: [] for player in player_to_idx.keys()}
     for idx, row in df.iterrows():
         player_ranks[row["j1"]].append(row["rank1"])
         player_ranks[row["j2"]].append(row["rank2"])
-    features = np.zeros((num_players, 1))
+    features = np.zeros((num_players, 2))
     for player, idx in player_to_idx.items():
         if player_ranks[player]:
             features[idx] = np.mean(player_ranks[player])
@@ -180,9 +239,7 @@ def build_node_features(df, player_to_idx):
     features = (features - np.mean(features)) / np.std(features)
     return torch.tensor(features, dtype=torch.float)
 
-###############################################
-# 6. Pipeline principale
-###############################################
+
 def count_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
@@ -223,15 +280,12 @@ def compute_player_differences(row):
       - Ratio d'âge (Age_Joueur_1 / Age_Joueur_2)
       - Ratio de points (Points_Joueur_1 / Points_Joueur_2)
     """
-    rank_diff = row["Rank_Joueur_1"] - row["Rank_Joueur_2"]
-    age_diff = row["Age_Joueur_1"] - row["Age_Joueur_2"]
-    points_diff = row["Points_Joueur_1"] - row["Points_Joueur_2"]
-    rank_ratio = row["Rank_Joueur_1"] / row["Rank_Joueur_2"] if row["Rank_Joueur_2"] != 0 else 0.0
-    age_ratio = row["Age_Joueur_1"] / row["Age_Joueur_2"] if row["Age_Joueur_2"] != 0 else 0.0
-    points_ratio = row["Points_Joueur_1"] / row["Points_Joueur_2"] if row["Points_Joueur_2"] != 0 else 0.0
-    set_win_diff = row["prev_set_win_p2"]-row["prev_set_win_p1"]
-
-    return np.array([rank_diff, age_diff, points_diff, rank_ratio, age_ratio, points_ratio,set_win_diff], dtype=np.float32)
+    rank_diff = row["rank1"] - row["rank2"]
+    age_diff = row["age1"] - row["age2"]
+    points_diff = row["point1"] - row["point2"]
+    elo_diff = row["elo_j1"] - row["elo_j2"]
+ 
+    return np.array([rank_diff, age_diff, points_diff,elo_diff], dtype=np.float32)
 
 import math
 import numpy as np
@@ -269,3 +323,105 @@ def compute_weighted_player_form(history, player, current_date, window_size, dec
     outcomes = np.array(outcomes, dtype=np.float32)
     weighted_average = np.sum(weights * outcomes) / np.sum(weights)
     return weighted_average
+
+
+def get_weighted_stat_of_last_match(df, player, current_date):
+    """
+    Récupère la statistique d'un joueur lors de son dernier match avant 'current_date',
+    puis la pondère par le rang de l'adversaire (exemple : stat * 1 / (rank_opponent + 1)).
+    Retourne 0 si le joueur n'a pas de match précédent.
+    """
+    # Filtrer les matchs du joueur avant la date courante
+    df_player = df[
+        ((df["j1"] == player) | (df["j2"] == player)) &
+        (df["date"] < current_date)
+    ].sort_values("date", ascending=False)
+    
+    if len(df_player) == 0:
+        # Aucun match précédent, on retourne (0.0, 0.0)
+        return 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+    
+    # Dernier match (le plus récent) avant 'current_date'
+    last_match = df_player.iloc[0]
+    
+    # Déterminer si le joueur était j1 ou j2 dans ce match
+    if last_match["j1"] == player:
+        # Exemple de stat : (aces - double fautes) du joueur
+        aces_stat = last_match.get("Aces_j1", 0) 
+        dblf = last_match.get("double_faults1", 0)
+        first_serv = last_match.get("_1er_Service_j1_perc", 0)
+        first_serv_pt = last_match.get("Pts_au_1er_service_j1_perc", 0)
+        second_serv_pt = last_match.get("Pts_au_2ème_service_j1_perc", 0)
+        break_save = last_match.get("Breaks_sauvés_j1_perc", 0)
+        opponent_rank = last_match.get("rank2", 9999)
+    else:
+        aces_stat = last_match.get("Aces_j2", 0)
+        dblf = last_match.get("double_faults2", 0)
+        first_serv = last_match.get("_1er_Service_j2_perc", 0)
+        first_serv_pt = last_match.get("Pts_au_1er_service_j2_perc", 0)
+        second_serv_pt = last_match.get("Pts_au_2ème_service_j2_perc", 0)
+        break_save = last_match.get("Breaks_sauvés_j2_perc", 0)
+        opponent_rank = last_match.get("rank1", 9999)
+    
+    # Pondération par la force de l’adversaire
+    # Ici, on choisit une pondération simple : plus l’adversaire est bien classé (rank petit), plus on
+    # "valorise" la stat. On peut adapter la formule à votre convenance.
+    weighted_aces_stat = aces_stat * (1.0 / (opponent_rank + 1))
+    weighted_dblf = dblf * (1.0 / (opponent_rank + 1))
+    first_serv = first_serv * (1.0 / (opponent_rank + 1))
+    first_serv_pt = first_serv_pt * (1.0 / (opponent_rank + 1))
+    second_serv_pt = second_serv_pt * (1.0 / (opponent_rank + 1))
+    break_save = break_save * (1.0 / (opponent_rank + 1))
+    
+
+
+    return weighted_aces_stat,weighted_dblf,first_serv,first_serv_pt,second_serv_pt,break_save
+
+
+def get_last_performance_seq(df, player, current_date, seq_length=5):
+    """
+    Retourne une séquence (de longueur seq_length) des performances passées du joueur
+    avant current_date. Chaque vecteur de performance contient 9 statistiques :
+      - Aces, double fautes, 1er service (%), points au 1er service (%),
+      - rank, age, elo, points,
+      - résultat du match (1 si gagné, 0 sinon).
+    Si le joueur a moins de seq_length matchs, on complète avec des zéros.
+    """
+    # Filtrer les matchs du joueur avant la date courante, triés par date décroissante
+    df_player = df[((df["j1"] == player) | (df["j2"] == player)) & (df["date"] < current_date)].sort_values("date", ascending=False)
+    
+    seq = []
+    for _, match in df_player.iterrows():
+        if match["j1"] == player:
+            won = 1 if match.get("winner", "") == player else 0
+            perf = [
+                match.get("Aces_j1", 0),
+                match.get("double_faults1", 0),
+                match.get("_1er_Service_j1_perc", 0),
+                match.get("Pts_au_1er_service_j1_perc", 0),
+                match.get("rank1", 0),
+                match.get("age1", 0),
+                match.get("elo_j1", 0),
+                match.get("point1", 0),
+                won
+            ]
+        else:
+            won = 1 if match.get("winner", "") == player else 0
+            perf = [
+                match.get("Aces_j2", 0),
+                match.get("double_faults2", 0),
+                match.get("_1er_Service_j2_perc", 0),
+                match.get("Pts_au_1er_service_j2_perc", 0),
+                match.get("rank2", 0),
+                match.get("age2", 0),
+                match.get("elo_j2", 0),
+                match.get("point2", 0),
+                won
+            ]
+        seq.append(perf)
+        if len(seq) >= seq_length:
+            break
+    # Si moins de matchs, on complète par des vecteurs de zéros
+    while len(seq) < seq_length:
+        seq.append([0, 0, 0, 0, 0, 0, 0, 0, 0])
+    return np.array(seq, dtype=np.float32)

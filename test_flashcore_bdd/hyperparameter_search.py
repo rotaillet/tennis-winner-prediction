@@ -6,29 +6,26 @@ import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
 from torch.optim.lr_scheduler import StepLR
 import torch_geometric
-from scipy.cluster.hierarchy import linkage, fcluster
-from rapidfuzz import fuzz
 from tqdm import tqdm
 
 # Importation des fonctions et classes depuis vos fichiers locaux
 from utils import (
     normalize_columns, build_mappings, build_node_features, 
     build_player_graph_with_weights, build_player_history, split_last_match,
-    nettoyer_tournoi,extraire_prize_money
 )
 from dataset import TennisMatchDataset
 from model import HybridTennisModel
 from train import test_model
 
 
-WINDOW_SIZE = 30            
+WINDOW_SIZE = 15            
 HIST_FEATURE_DIM = 5       
-STATIC_FEATURE_DIM = 6    
-NUM_HEADS_DIM = 4
+STATIC_FEATURE_DIM = 3    
+NUM_HEADS_DIM = 2
 
 
 
-df = pd.read_csv("data/all_features.csv", parse_dates=["Date"])
+df = pd.read_csv("data/all_features.csv", parse_dates=["date"])
 
 
 
@@ -37,6 +34,9 @@ print("Nombre de matchs dans le dataset :", len(df))
 player_to_idx, tournoi_to_idx = build_mappings(df)
 history = build_player_history(df)
 train_df, test_df = split_last_match(df)
+
+train_df.to_csv('data/train.csv',index=False)
+test_df.to_csv('data/test.csv',index=False)
 
 
 
@@ -64,16 +64,17 @@ print(f"Degré moyen par joueur : {num_edges / num_nodes:.2f}")
 
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
+print(device)
 
 # Liste de combinaisons d'hyperparamètres à tester
 hyperparams_list = [
 
-    {"lr": 0.00002, "dropout": 0.4, "D_MODEL": 512, "GAT_HIDDEN_DIM": 512, "GAT_OUTPUT_DIM": 256, "weight_decay": 5e-5},
-    {"lr": 0.00002, "dropout": 0.4, "D_MODEL": 512, "GAT_HIDDEN_DIM": 512, "GAT_OUTPUT_DIM": 256, "weight_decay": 1e-5},
-    {"lr": 0.00002, "dropout": 0.4, "D_MODEL": 512, "GAT_HIDDEN_DIM": 512, "GAT_OUTPUT_DIM": 256, "weight_decay": 1e-4},
-    {"lr": 0.00002, "dropout": 0.4, "D_MODEL": 512, "GAT_HIDDEN_DIM": 256, "GAT_OUTPUT_DIM": 256, "weight_decay": 5e-5},
-    {"lr": 0.00002, "dropout": 0.4, "D_MODEL": 512, "GAT_HIDDEN_DIM": 256, "GAT_OUTPUT_DIM": 128, "weight_decay": 5e-5},
-    {"lr": 0.00002, "dropout": 0.4, "D_MODEL": 256, "GAT_HIDDEN_DIM": 256, "GAT_OUTPUT_DIM": 128, "weight_decay": 5e-5},
+    {"lr": 0.001, "dropout": 0.5, "D_MODEL": 64, "GAT_HIDDEN_DIM": 32, "GAT_OUTPUT_DIM": 16, "weight_decay": 5e-5},
+    {"lr": 0.001, "dropout": 0.4, "D_MODEL": 64, "GAT_HIDDEN_DIM": 32, "GAT_OUTPUT_DIM": 16, "weight_decay": 5e-5},
+    {"lr": 0.001, "dropout": 0.3, "D_MODEL": 64, "GAT_HIDDEN_DIM": 32, "GAT_OUTPUT_DIM": 16, "weight_decay": 5e-5},
+    {"lr": 0.001, "dropout": 0.2, "D_MODEL": 64, "GAT_HIDDEN_DIM": 32, "GAT_OUTPUT_DIM": 16, "weight_decay": 5e-5},
+    {"lr": 0.001, "dropout": 0.1, "D_MODEL": 64, "GAT_HIDDEN_DIM": 32, "GAT_OUTPUT_DIM": 16, "weight_decay": 5e-5},
+    {"lr": 0.001, "dropout": 0.0, "D_MODEL": 64, "GAT_HIDDEN_DIM": 32, "GAT_OUTPUT_DIM": 16, "weight_decay": 5e-5},
 
 
 ]
@@ -110,10 +111,10 @@ for i, hparams in enumerate(hyperparams_list):
 
     max_test_acc = 0.0  
 
-    for epoch in tqdm(range(5), desc="Époques", leave=True):
+    for epoch in tqdm(range(10), desc="Époques", leave=True):
         model.train()
         running_loss = 0.0
-        for batch in tqdm(train_dataloader, desc=f"Epoch {epoch+1}/5", leave=False):
+        for batch in tqdm(train_dataloader, desc=f"Epoch {epoch+1}/10", leave=False):
             p1_history = batch["p1_history"].to(device)
             p2_history = batch["p2_history"].to(device)
             static_feat = batch["static_feat"].to(device)

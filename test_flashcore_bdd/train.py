@@ -82,3 +82,65 @@ def test_model(model, dataloader, criterion, node_features, edge_index, edge_wei
 
     return avg_loss, accuracy, misclassified_matches  # Retourne aussi la liste des erreurs
 
+
+import torch.nn.functional as F
+def test_model2(model, dataloader, criterion, graph_data, device="cpu"):
+    model.eval()
+    running_loss = 0.0
+    correct = 0
+    total = 0
+    all_softmax_outputs = []
+    all_predictions = []  # Pour stocker les prédictions
+    all_targets = []      # Pour stocker les vérités
+
+    with torch.no_grad():
+        for batch in tqdm(dataloader, desc="Test", leave=False):
+            static_feat = batch["static_feat"].to(device)
+            targets = batch["target"].to(device)
+            player1_idx = batch["player1_idx"].to(device)
+            player2_idx = batch["player2_idx"].to(device)
+            tournoi_idx = batch["tournoi_idx"].to(device)
+            player1_seq = batch["player1_seq"].to(device)
+            player2_seq = batch["player2_seq"].to(device)
+            
+            outputs = model(static_feat, player1_idx, player2_idx, tournoi_idx, graph_data, player1_seq, player2_seq)
+            loss = criterion(outputs, targets)
+            running_loss += loss.item()
+
+            softmax_outputs = F.softmax(outputs, dim=1)
+            all_softmax_outputs.append(softmax_outputs)
+
+            # Obtenir la prédiction (classe avec la plus haute probabilité)
+            _, predicted = torch.max(outputs, 1)
+            all_predictions.append(predicted)
+            all_targets.append(targets)
+
+            total += targets.size(0)
+            correct += (predicted == targets).sum().item()
+
+    avg_loss = running_loss / len(dataloader)
+    accuracy = correct / total
+
+    # Concaténer tous les batchs
+    all_softmax_outputs = torch.cat(all_softmax_outputs, dim=0)
+    all_predictions = torch.cat(all_predictions, dim=0)
+    all_targets = torch.cat(all_targets, dim=0)
+
+    # Calculer la probabilité maximale pour chaque prédiction
+    max_probs, _ = torch.max(all_softmax_outputs, dim=1)
+    # Créer un masque pour les prédictions avec une confiance > 80%
+    high_conf_mask = max_probs > 0.61
+
+    # Sélectionner les prédictions et cibles correspondantes
+    high_conf_predictions = all_predictions[high_conf_mask]
+    high_conf_targets = all_targets[high_conf_mask]
+
+    # Compter le nombre de cas où la prédiction était correcte
+    high_conf_correct = (high_conf_predictions == high_conf_targets).sum().item()
+    number_high_conf = high_conf_mask.sum().item()
+
+    print(f"Nombre de prédictions avec confiance >80%: {number_high_conf}")
+    print(f"Nombre de victoires réelles parmi ces prédictions: {high_conf_correct}")
+    print(f"statistique associé à ces predictions : {high_conf_correct/number_high_conf *100:.2f}%")
+    return avg_loss, accuracy, all_softmax_outputs
+
