@@ -9,7 +9,7 @@ from utils import (
 from dataset import TennisMatchDataset2
 import numpy as np
 from model import TennisMatchPredictor
-
+import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
 app = Flask(__name__)
 
