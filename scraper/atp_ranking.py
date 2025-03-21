@@ -26,6 +26,14 @@ option_values = [opt.get_attribute("value") for opt in all_options]
 
 for i in range(220):
     first_option = option_values[i]
+    csv_filename = f"ranking_{first_option}.csv"
+    csv_path = os.path.join("ranking_dataframe", csv_filename)
+
+    # Vérifier si le fichier existe déjà
+    if os.path.exists(csv_path):
+        print(f"Le fichier {csv_filename} existe déjà, passage à la prochaine itération.")
+        continue  # Passer à la prochaine itération pour éviter de re-télécharger les mêmes données
+
 
     driver.get(f"https://www.tennislive.net/atp/ranking/EN/{first_option}")
 
@@ -80,8 +88,7 @@ for i in range(220):
 
     # 14) Enregistrer le DataFrame dans un fichier CSV, 
     #     en incluant la date dans le nom du fichier
-    csv_filename = f"ranking_{first_option}.csv"
-    csv_path = os.path.join("rankin_dataframe", csv_filename)
+    
     df.to_csv(csv_path, index=False)
 
     print(f"\nDataFrame enregistré dans : {csv_path}")
