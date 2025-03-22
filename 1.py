@@ -11,6 +11,10 @@ import re
 import numpy as np
 from multiprocessing import Pool
 import datetime
+from datetime import date, timedelta
+
+
+
 import os
 from urllib.parse import urlparse
 
@@ -169,7 +173,7 @@ def links(tournois,df1):
 
 def process_match(match_tuple):
     """
-    Pour un match donné (saison, href), cette fonction :
+    Pour un match donné (tour, href), cette fonction :
       - Ouvre une instance Selenium
       - Extrait le score complet et les statistiques via l'URL "/statistiques-du-match/1"
       - Extrait le score mi-temps via l'URL de base
@@ -327,11 +331,6 @@ def process_match(match_tuple):
 
    
 
-
-
-    
-        
-        # --- Extraction du score mi-temps ---
     
     finally:
         print("fin")
@@ -361,7 +360,7 @@ def nettoyage(df):
     df.to_csv("matchs_utilisable.csv", index=False)
     return df
 
-def ranking(df, dos="ranking_dataframe"):
+def ranking(df, dos="preprocess_ranking_dataframe"):
     # Conversion des dates du DataFrame en datetime
     df["date"] = pd.to_datetime(df["date"], format='%d.%m.%Y %H:%M')
     df["date"] = df["date"].apply(lambda dt: datetime.datetime(dt.year, dt.month, dt.day))
@@ -425,7 +424,7 @@ def pretraitement(df):
     rank1, rank2, age1, age2, point1, point2 = [], [], [], [], [], []
     
     for i in tqdm(range(len(df)), desc="Extraction en cours"):  # Ajout de tqdm
-        df_rank = pd.read_csv(f"ranking_dataframe/{df["Closest_File"][i]}")
+        df_rank = pd.read_csv(f"preprocess_ranking_dataframe/{df["Closest_File"][i]}")
 
         ra1,ra2,a1,a2,p1,p2 = None,None,None,None,None,None
         for j in range(len(df_rank)):
@@ -519,7 +518,7 @@ def drop_elements(df):
     df_final.drop(['tournois',"Closest_File","sets"], axis=1, inplace=True)
     df_final.drop(columns_with_percent, axis=1, inplace=True)
     df['score_j1'] = df['score_j1'].astype(float)
-
+    df['score_j2'] = df['score_j2'].astype(float)
     df_final['winner'] = np.where(df['score_j1'] > df['score_j2'], df["j1"],
                         np.where(df['score_j1'] < df['score_j2'], df["j2"], 'égalité'))
     df_final.to_csv('all_features_bonus.csv')
@@ -618,41 +617,112 @@ def fonction_un_nom(df):
 if __name__ == '__main__':
     
     driver = webdriver.Chrome()
-   
+    today = date.today()
+    jours = []
+
+    for i in range(-2, 2):
+        d = today + timedelta(days=i)
+        if i == 0:
+            jours.append("AJD")  # Jour courant
+        else:
+            jours.append(f"{d.day:02d}/{d.month:02d}")
+
+    print(jours)
+    old_match = []
+    new_match = []
+    tournament_o = []
+    tournament_n = []
     try:
-        driver.get("https://www.flashscore.fr/tennis/")
-        time.sleep(5)  # Laissez le temps à la page de charger
-        b = False
+        
+        
+        for jour in jours:
+            driver.get("https://www.flashscore.fr/tennis/")
+            time.sleep(1)  # Laissez le temps à la page de charger
+            b = False
+            element = driver.find_element(By.ID, "calendarMenu")
+            element.click()
+            button = driver.find_elements(By.CLASS_NAME, "calendar__day")
 
-        # 1) Identifier le conteneur global (ou un conteneur pertinent)
-        #    Sur Flashscore, la structure peut varier, adaptez si besoin :
-        container = driver.find_element(By.CLASS_NAME, "sportName")  
-        # Par exemple, "sportName" contient généralement la liste des matchs
+            for j in button:
+                if jour in j.text:
+                    j.click()
+                    break
+            div_element = driver.find_element(By.CSS_SELECTOR, "div.event__titleBox")
 
-        # 2) Récupérer tous les <div> enfants directs dans ce conteneur
-        all_divs = container.find_elements(By.XPATH, "./div")
+            # Récupère l'attribut href
+            a_element = div_element.find_element(By.TAG_NAME, "a")
 
-        # 3) Parcourir chaque <div> dans l'ordre
-        for div in all_divs:
-            # Vérifier si on est tombé sur l'élément "header admin v-leagueheader collapsed"
-            # On s'arrête alors.
-            classes = div.get_attribute("class")
-            if "wcl-header_uBhYi wclLeagueHeader wclLeagueHeader--collapsed" in classes and b==False:
-                b = True  # On ne va pas plus loin
-                continue
-            if "wcl-header_uBhYi wclLeagueHeader wclLeagueHeader--collapsed" in classes and b==True:
-                break  # On ne va pas plus loin
 
-            # 4) Sinon, si l'id commence par "g_2_", on récupère tous les <a> qu'il contient
-            div_id = div.get_attribute("id")
-            if div_id and div_id.startswith("g_2_"):
-                # Extraire tous les liens
-                links = div.find_elements(By.TAG_NAME, 'a')
-                for link in links:
-                    href_value = link.get_attribute('href')
-                    if href_value:
-                        print(href_value)
+            href_tournament = a_element.get_attribute("href")
+
+            print(href_tournament)
+            time.sleep(0.5)
+            # 1) Identifier le conteneur global (ou un conteneur pertinent)
+            #    Sur Flashscore, la structure peut varier, adaptez si besoin :
+            container = driver.find_element(By.CLASS_NAME, "sportName")  
+            # Par exemple, "sportName" contient généralement la liste des matchs
+
+            # 2) Récupérer tous les <div> enfants directs dans ce conteneur
+            all_divs = container.find_elements(By.XPATH, "./div")
+
+            # 3) Parcourir chaque <div> dans l'ordre
+            for div in all_divs:
+                # Vérifier si on est tombé sur l'élément "header admin v-leagueheader collapsed"
+                # On s'arrête alors.
+                classes = div.get_attribute("class")
+                if "wcl-header_uBhYi wclLeagueHeader wclLeagueHeader--collapsed" in classes and b==False:
+                    b = True  # On ne va pas plus loin
+                    continue
+                if "wcl-header_uBhYi wclLeagueHeader wclLeagueHeader--collapsed" in classes and b==True:
+                    break  # On ne va pas plus loin
+
+                
+                
+                div_id = div.get_attribute("id")
+                if div_id and div_id.startswith("g_2_"):
+                    # Extraire tous les liens
+                    links = div.find_elements(By.TAG_NAME, 'a')
+                    for link in links:
+                        href_value = link.get_attribute('href')
+                        if href_value:
+                            print(href_value)
+                            if jour != "AJD":
+                                jour_date = datetime.datetime.strptime(jour + f"/{today.year}", "%d/%m/%Y").date()
+                                if jour_date < today:
+                                    old_match.append(href_value)
+                                    tournament_o.append(href_tournament)
+                                else:
+                                    new_match.append(href_value)
+                                    tournament_n.append(href_tournament)
+                            else : 
+                                new_match.append(href_value)
+                                tournament_n.append(href_tournament)
+            
+
+            
+
+
 
     finally:
         driver.quit()
+
+    df = pd.DataFrame({
+            "href": old_match,
+            "tournois": tournament_o
+        })
+    match_list = list(zip(df["tournois"], df["href"]))
+            
+    with Pool(processes=10) as pool:  # 4 = nb de processus en parallèle
+        results = pool.map(process_match, match_list)
+    df = pd.DataFrame(results)
+    df = nettoyage(df)
+    df = ranking(df)
+    df = pretraitement(df)
+    df = drop_elements(df)
+    df1 = pd.read_csv("data/features.csv")
+    df = merge(df1,df)
+    df.drop_duplicates(inplace = True)
+    fonction_un_nom(df)
+    
+
             

@@ -21,7 +21,7 @@ d_model = 256
 gnn_hidden = 256
 num_gnn_layers = 12
 dropout = 0.3
-df = pd.read_csv("data/all_features2.csv", parse_dates=["date"])
+df = pd.read_csv("data/features.csv", parse_dates=["date"])
 
 
 player_to_idx, tournoi_to_idx = build_mappings(df)
@@ -67,7 +67,7 @@ model.eval()
 
 # Charger le CSV dans un DataFrame
 # On peut charger le fichier une seule fois au démarrage si le CSV n'est pas mis à jour en temps réel.
-matches_df = pd.read_csv('data/all_features2.csv', parse_dates=['date'])
+matches_df = pd.read_csv('data/features.csv', parse_dates=['date'])
 
 
 

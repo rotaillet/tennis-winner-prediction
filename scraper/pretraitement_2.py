@@ -42,7 +42,7 @@ def extract_name_age(s):
 # Dossier source contenant les fichiers CSV
 source_folder = "rankin_dataframe"
 # Dossier destination pour enregistrer les fichiers traités
-dest_folder = "ranking_dataframe"
+dest_folder = "preprocess_ranking_dataframe"
 os.makedirs(dest_folder, exist_ok=True)
 
 # Parcourir chaque fichier CSV dans le dossier source
