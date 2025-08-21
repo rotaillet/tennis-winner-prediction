@@ -32,7 +32,7 @@ Unlike traditional approaches such as Elo ratings or tabular models (Logistic Re
 4. **Training setup**
    - Optimizer: `AdamW`  
    - Loss: `BCEWithLogitsLoss`  
-   - Regularization: `Dropout`, `Weight Decay`, `DropEdge` (optional)  
+   - Regularization: `Dropout`, `Weight Decay`
    - Early stopping
 
 ---
