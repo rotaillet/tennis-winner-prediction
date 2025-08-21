@@ -13,7 +13,6 @@ Unlike traditional approaches such as Elo ratings or tabular models (Logistic Re
    - Cleaning and feature engineering from ATP match data  
    - Differential features such as:  
      `ELO_DIFF`, `ATP_POINTS_DIFF`, `H2H_DIFF`, `P_ACE_LAST_50_DIFF`, etc.  
-   - Normalization using `StandardScaler`
 
 2. **Graph construction**
    - Each player = a node  
