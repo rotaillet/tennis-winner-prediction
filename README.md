@@ -24,9 +24,9 @@ Unlike traditional approaches such as Elo ratings or tabular models (Logistic Re
 3. **Model architecture**
    - **TGNMemory**: dynamic player memory  
    - **MultiLayerTimeAwareGNN**: time-aware GNN using TransformerConv  
-   - **SmallWinPredictor**:<img width="1763" height="61" alt="tgn_model_diagram" src="https://github.com/user-attachments/assets/6eb8f9a0-6906-4570-8e52-b6d3dfffa003" />
+   - **SmallWinPredictor**
  classification head predicting match outcome
-![Uploading tgn_model_diagram.png…]()
+:<img width="1763" height="61" alt="tgn_model_diagram" src="https://github.com/user-attachments/assets/6eb8f9a0-6906-4570-8e52-b6d3dfffa003" />
 
 
 4. **Training setup**
