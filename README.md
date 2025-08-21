@@ -52,8 +52,3 @@ Unlike traditional approaches such as Elo ratings or tabular models (Logistic Re
 
 ---
 
-## 🛠️ Installation
-```bash
-git clone https://github.com/your-username/tennis-tgn.git
-cd tennis-tgn
-pip install -r requirements.txt
