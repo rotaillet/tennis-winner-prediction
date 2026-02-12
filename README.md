@@ -38,7 +38,7 @@ Unlike traditional approaches such as Elo ratings or tabular models (Logistic Re
 ---
 
 ## 📊 Results
-- Achieved accuracy: **~73–74%**, close to surface-specific Elo benchmarks.  
+- Achieved accuracy: **~67.5%**, close to surface-specific Elo benchmarks.  
 - While not a breakthrough, the project provided key **insights**:  
   - Label leakage must be carefully avoided  
   - Temporal GNNs are powerful but prone to **overfitting** and costly to train  
